@@ -141,6 +141,48 @@ action:
 
 > **Note:** The state trigger uses the default 500ms delay and the same path matching as custom events. Both triggers can be active simultaneously — admin users get both, non-admin users get only the state trigger.
 
+**4. Helper script (optional):**
+
+Create a reusable HA script that sets the path and resets the entity automatically. Add this to your `scripts.yaml` (or via **Settings → Automations & Scenes → Scripts**):
+
+```yaml
+reload_dashboard:
+  alias: Reload Dashboard
+  description: Reload browser dashboards via the state-based trigger.
+  fields:
+    path:
+      description: Path prefix to reload (e.g. "/lovelace"). Defaults to "/" (all dashboards).
+      default: "/"
+      example: "/lovelace"
+      selector:
+        text:
+  sequence:
+    - action: input_text.set_value
+      target:
+        entity_id: input_text.reload_dashboard
+      data:
+        value: "{{ path | default('/') }}"
+    - delay: 1
+    - action: input_text.set_value
+      target:
+        entity_id: input_text.reload_dashboard
+      data:
+        value: ""
+  mode: single
+```
+
+Call the script from automations, buttons, or Developer Tools:
+
+```yaml
+# Reload all dashboards
+action: script.reload_dashboard
+
+# Reload a specific path
+action: script.reload_dashboard
+data:
+  path: "/lovelace"
+```
+
 ## Dashboard button example
 
 Add a button card to any dashboard:
