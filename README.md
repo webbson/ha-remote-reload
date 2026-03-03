@@ -6,6 +6,8 @@ Remotely reload Home Assistant dashboards by firing a custom event. Useful for w
 
 This is a lightweight JavaScript resource that subscribes to a custom `reload_dashboard` event on Home Assistant's WebSocket connection. When the event is fired (from an automation, script, button, or Developer Tools), every browser tab running the script checks if its current path matches the optional filter — and reloads if it does.
 
+For non-admin users (where custom events are restricted), the script also supports a state-based trigger via an `input_text` helper entity — set its value to a path and the matching tabs reload.
+
 The script continuously monitors the connection and automatically resubscribes after HA restarts or network interruptions — ideal for wall-mounted kiosk displays running 24/7.
 
 No DOM scraping, no shadow DOM traversal, no dependency on specific HA frontend component versions.
@@ -80,6 +82,65 @@ event_data:
 
 Default delay is 500ms. Set `delay: 0` for immediate reload.
 
+### State-based trigger (non-admin users)
+
+HA restricts custom event subscriptions to admin users. If your kiosk displays run under a non-admin account, use an `input_text` helper as the trigger instead.
+
+**1. Create an `input_text` helper:**
+
+Go to **Settings → Devices & Services → Helpers → Create Helper → Text** and name it `reload_dashboard` (entity ID: `input_text.reload_dashboard`).
+
+**2. Configure the script:**
+
+Edit `ha-remote-reload.js` and set `stateEntityId` in the `CONFIG` object:
+
+```js
+const CONFIG = {
+  defaultDelay: 500,
+  debounceMs: 5000,
+  debug: false,
+  stateEntityId: "input_text.reload_dashboard",   // ← enable state trigger
+};
+```
+
+**3. Trigger a reload:**
+
+Set the entity value to `/` to reload all dashboards, or a path prefix to reload matching tabs only. The script triggers when the value changes from empty to non-empty, so clear it afterwards:
+
+```yaml
+action:
+  - action: input_text.set_value
+    target:
+      entity_id: input_text.reload_dashboard
+    data:
+      value: "/"
+  - delay: 1
+  - action: input_text.set_value
+    target:
+      entity_id: input_text.reload_dashboard
+    data:
+      value: ""
+```
+
+Reload only dashboards under `/lovelace`:
+
+```yaml
+action:
+  - action: input_text.set_value
+    target:
+      entity_id: input_text.reload_dashboard
+    data:
+      value: "/lovelace"
+  - delay: 1
+  - action: input_text.set_value
+    target:
+      entity_id: input_text.reload_dashboard
+    data:
+      value: ""
+```
+
+> **Note:** The state trigger uses the default 500ms delay and the same path matching as custom events. Both triggers can be active simultaneously — admin users get both, non-admin users get only the state trigger.
+
 ## Dashboard button example
 
 Add a button card to any dashboard:
@@ -151,24 +212,44 @@ const CONFIG = {
   defaultDelay: 500,
   debounceMs: 5000,
   debug: true,   // ← enable logging
+  stateEntityId: "input_text.reload_dashboard",
 };
 ```
 
 You'll see logs like:
 
 ```
-[ha-remote-reload] Initializing (v1.1.0) — listening for reload_dashboard events...
+[ha-remote-reload] Initializing (v1.2.0) — listening for reload_dashboard events...
+[ha-remote-reload] State trigger enabled for input_text.reload_dashboard
 [ha-remote-reload] Current path: /lovelace/0
 [ha-remote-reload] Ready. Waiting for events.
+```
+
+When a custom event fires:
+
+```
 [ha-remote-reload] Received event: { pathFilter: "/dev-dash", delay: 500, currentPath: "/dev-dash/overview" }
 [ha-remote-reload] Path matches — will reload.
 ```
 
-After an HA restart or network drop, you'll see:
+When the state trigger fires:
+
+```
+[ha-remote-reload] State trigger: { entity: "input_text.reload_dashboard", value: "/", pathFilter: "(all)", currentPath: "/lovelace/0" }
+[ha-remote-reload] Path matches — will reload.
+```
+
+If the custom event subscription fails (non-admin user):
+
+```
+[ha-remote-reload] Warning: Could not subscribe to reload_dashboard (requires admin): ...
+```
+
+After an HA restart or network drop:
 
 ```
 [ha-remote-reload] Connection changed — resubscribing.
-[ha-remote-reload] Resubscribed to reload_dashboard events.
+[ha-remote-reload] Resubscribed.
 ```
 
 ## Event reference

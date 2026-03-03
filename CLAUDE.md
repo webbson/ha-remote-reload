@@ -16,17 +16,21 @@ There is no build system, package manager, or test framework. The project is a s
 
 `ha-remote-reload.js` is an IIFE (Immediately Invoked Function Expression) with these layers:
 
-1. **Config** (lines 19-26) — `CONFIG` object with `defaultDelay`, `debounceMs`, `debug`
-2. **Utilities** (lines 30-63) — `log()`, `getCurrentPath()`, `pathMatches()`
-3. **Reload scheduler** (lines 68-81) — `scheduleReload()` with debounce tracking via `lastReload` timestamp
-4. **Event handler** (lines 86-109) — `handleEvent()` extracts `path` and `delay` from event data
-5. **WebSocket integration** — `getHassConnection()` retrieves the HA connection from the DOM, `subscribe()` hooks into `reload_dashboard` events and stores the unsub handle in `activeUnsub`, `resubscribe()` cleans up the old subscription and subscribes to a new connection, `init()` runs a two-phase health-check loop:
-   - **Phase 1 (connecting):** Fast polls at 500ms, slows to 5s after 30s, never gives up
-   - **Phase 2 (connected):** Health-checks every 10s via reference comparison (`getHassConnection() !== activeConn`), resubscribes if the connection object changed, drops back to Phase 1 if lost
+1. **Config** — `CONFIG` object with `defaultDelay`, `debounceMs`, `debug`, `stateEntityId`
+2. **Utilities** — `log()`, `getCurrentPath()`, `pathMatches()`
+3. **Reload scheduler** — `scheduleReload()` with debounce tracking via `lastReload` timestamp
+4. **Event handlers** — `handleEvent()` for custom `reload_dashboard` events (admin only), `handleStateEvent()` for `state_changed` events on the configured `input_text` entity (all users). State trigger fires only on blank→non-empty transitions.
+5. **WebSocket integration** — dual subscription model:
+   - `subscribe()` subscribes to both `reload_dashboard` (custom event, admin) and `state_changed` (standard event, all users). Both `subscribeEvents()` calls return Promises; errors are caught and logged (non-admin users see a warning for the custom event).
+   - `cleanupSubscriptions()` resolves unsub Promises via `.then()` before calling cleanup functions
+   - `resubscribe()` cleans up old subscriptions and re-subscribes to a new connection
+   - `init()` runs a two-phase health-check loop:
+     - **Phase 1 (connecting):** Fast polls at 500ms, slows to 5s after 30s, never gives up
+     - **Phase 2 (connected):** Health-checks every 10s via reference comparison (`getHassConnection() !== activeConn`), resubscribes if changed, drops back to Phase 1 if lost
 
-State: `activeConn` tracks the current connection reference, `activeUnsub` holds the unsubscribe function returned by `subscribeEvents()`.
+State: `activeConn` tracks the current connection reference, `activeUnsubEvent` and `activeUnsubState` hold the Promise-wrapped unsubscribe functions.
 
-Data flow: HA backend fires event → WebSocket delivers to browser → `handleEvent()` checks path filter → `scheduleReload()` debounces and calls `location.reload()`.
+Data flow: HA backend fires event → WebSocket delivers to browser → `handleEvent()` or `handleStateEvent()` checks path filter → `scheduleReload()` debounces and calls `location.reload()`.
 
 ## Key Conventions
 

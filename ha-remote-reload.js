@@ -5,10 +5,13 @@
  * automation or the developer tools) and reloads the browser tab if the
  * current dashboard path matches.
  *
+ * Also supports a state-based trigger via an input_text helper entity,
+ * which works for non-admin users (custom events require admin access).
+ *
  * See README.md for installation and usage instructions.
  *
  * @license MIT
- * @version 1.1.0
+ * @version 1.2.0
  */
 
 (function () {
@@ -23,11 +26,17 @@
     debounceMs: 5000,
     // Enable console logging.
     debug: false,
+    // State-based trigger: entity ID of an input_text helper
+    // (e.g. "input_text.reload_dashboard"). Set the entity value to "/"
+    // to reload all dashboards, or a path prefix (e.g. "/lovelace") to
+    // reload matching tabs only. Leave empty to disable.
+    stateEntityId: "",
   };
 
   let lastReload = 0;
   let activeConn = null;
-  let activeUnsub = null;
+  let activeUnsubEvent = null;
+  let activeUnsubState = null;
 
   function log(...args) {
     if (CONFIG.debug) {
@@ -110,6 +119,46 @@
     }
   }
 
+  /**
+   * Handle a state_changed event for the configured input_text entity.
+   * Only triggers when the value changes from empty to non-empty.
+   */
+  function handleStateEvent(event) {
+    const data = event.data || {};
+    if (data.entity_id !== CONFIG.stateEntityId) return;
+
+    // Skip synthetic events fired on initial subscription
+    if (!data.old_state) return;
+
+    const oldVal = (data.old_state.state || "").trim();
+    const newVal = ((data.new_state && data.new_state.state) || "").trim();
+
+    // Only trigger on blank → non-empty transitions
+    if (oldVal !== "" || newVal === "") return;
+
+    // "/" means reload all, otherwise use as path filter
+    const pathFilter = newVal === "/" ? undefined : newVal;
+
+    log("State trigger:", {
+      entity: CONFIG.stateEntityId,
+      value: newVal,
+      pathFilter: pathFilter || "(all)",
+      currentPath: getCurrentPath(),
+    });
+
+    if (pathMatches(pathFilter)) {
+      log("Path matches — will reload.");
+      scheduleReload(CONFIG.defaultDelay, "state entity=" + CONFIG.stateEntityId + " path=" + (pathFilter || "*"));
+    } else {
+      log(
+        "Path does not match. Current:",
+        getCurrentPath(),
+        "filter:",
+        pathFilter
+      );
+    }
+  }
+
   // ─── Connect to HA WebSocket ───────────────────────────────────────────
 
   function getHassConnection() {
@@ -123,26 +172,57 @@
     return null;
   }
 
+  function cleanupSubscriptions() {
+    if (activeUnsubEvent) {
+      activeUnsubEvent.then(function (unsub) {
+        try { unsub(); } catch (_) { /* ignore */ }
+      }).catch(function () {});
+      activeUnsubEvent = null;
+    }
+    if (activeUnsubState) {
+      activeUnsubState.then(function (unsub) {
+        try { unsub(); } catch (_) { /* ignore */ }
+      }).catch(function () {});
+      activeUnsubState = null;
+    }
+  }
+
   function subscribe(conn) {
     log("Subscribing to", EVENT_TYPE, "events via WebSocket.");
-    activeUnsub = conn.subscribeEvents(function (event) {
+    activeUnsubEvent = conn.subscribeEvents(function (event) {
       handleEvent(event);
     }, EVENT_TYPE);
+    activeUnsubEvent.catch(function (err) {
+      log("Warning: Could not subscribe to", EVENT_TYPE, "(requires admin):", err.message || err);
+      activeUnsubEvent = null;
+    });
+
+    if (CONFIG.stateEntityId) {
+      log("Subscribing to state changes for", CONFIG.stateEntityId);
+      activeUnsubState = conn.subscribeEvents(function (event) {
+        handleStateEvent(event);
+      }, "state_changed");
+      activeUnsubState.catch(function (err) {
+        log("Error: Could not subscribe to state_changed:", err.message || err);
+        activeUnsubState = null;
+      });
+    }
+
     activeConn = conn;
   }
 
   function resubscribe(newConn) {
-    if (activeUnsub) {
-      try { activeUnsub(); } catch (_) { /* old connection may be dead */ }
-      activeUnsub = null;
-    }
+    cleanupSubscriptions();
     activeConn = null;
     subscribe(newConn);
-    log("Resubscribed to", EVENT_TYPE, "events.");
+    log("Resubscribed.");
   }
 
   function init() {
-    log("Initializing (v1.1.0) — listening for", EVENT_TYPE, "events...");
+    log("Initializing (v1.2.0) — listening for", EVENT_TYPE, "events...");
+    if (CONFIG.stateEntityId) {
+      log("State trigger enabled for", CONFIG.stateEntityId);
+    }
     log("Current path:", getCurrentPath());
 
     var FAST_MS = 500;
@@ -188,10 +268,7 @@
             resubscribe(conn);
           } else {
             log("Connection lost — waiting for reconnect.");
-            if (activeUnsub) {
-              try { activeUnsub(); } catch (_) { /* ignore */ }
-              activeUnsub = null;
-            }
+            cleanupSubscriptions();
             activeConn = null;
             clearInterval(handle);
             pollMs = FAST_MS;
