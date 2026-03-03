@@ -26,11 +26,12 @@
     debounceMs: 5000,
     // Enable console logging.
     debug: false,
-    // State-based trigger: entity ID of an input_text helper
-    // (e.g. "input_text.reload_dashboard"). Set the entity value to "/"
-    // to reload all dashboards, or a path prefix (e.g. "/lovelace") to
-    // reload matching tabs only. Leave empty to disable.
-    stateEntityId: "",
+    // State-based trigger: entity ID of an input_text helper.
+    // Set the entity value to "/" to reload all dashboards, or a path
+    // prefix (e.g. "/lovelace") to reload matching tabs only.
+    // Requires creating the helper in HA (see README). Works for all
+    // users including non-admin. Set to "" to disable.
+    stateEntityId: "input_text.reload_dashboard",
   };
 
   let lastReload = 0;

@@ -4,11 +4,12 @@ Remotely reload Home Assistant dashboards by firing a custom event. Useful for w
 
 ## How it works
 
-This is a lightweight JavaScript resource that subscribes to a custom `reload_dashboard` event on Home Assistant's WebSocket connection. When the event is fired (from an automation, script, button, or Developer Tools), every browser tab running the script checks if its current path matches the optional filter — and reloads if it does.
+This is a lightweight JavaScript resource that listens for reload triggers on Home Assistant's WebSocket connection. It supports two methods out of the box:
 
-For non-admin users (where custom events are restricted), the script also supports a state-based trigger via an `input_text` helper entity — set its value to a path and the matching tabs reload.
+- **Custom event** (`reload_dashboard`) — full-featured with path filtering, delay, and multi-path support. Requires admin user sessions.
+- **State trigger** (`input_text.reload_dashboard`) — set the entity value to a path and matching tabs reload. Works for all users including non-admin kiosk accounts.
 
-The script continuously monitors the connection and automatically resubscribes after HA restarts or network interruptions — ideal for wall-mounted kiosk displays running 24/7.
+Both are always active. The script continuously monitors the connection and automatically resubscribes after HA restarts or network interruptions — ideal for wall-mounted kiosk displays running 24/7.
 
 No DOM scraping, no shadow DOM traversal, no dependency on specific HA frontend component versions.
 
@@ -39,18 +40,38 @@ resources:
 3. Search for "Remote Reload" and install.
 4. Add the resource as described above (HACS may do this automatically).
 
+## Setup
+
+The script supports two trigger methods. Both are active by default and share the same path matching and debounce logic.
+
+| Method | Requires | Supports | Best for |
+|--------|----------|----------|----------|
+| **Custom event** (`reload_dashboard`) | Admin user | Path filter, delay, multiple paths | Admin dashboards, Developer Tools |
+| **State trigger** (`input_text`) | Any user | Path filter | Kiosk displays, non-admin accounts |
+
+### State trigger setup
+
+The state trigger watches `input_text.reload_dashboard` out of the box. Create the helper:
+
+1. Go to **Settings → Devices & Services → Helpers → Create Helper → Text**.
+2. Name it `reload_dashboard` (entity ID: `input_text.reload_dashboard`).
+
+That's it — no script editing needed. If the helper doesn't exist, the state trigger simply has no effect.
+
+> To use a different entity ID, edit `stateEntityId` in the `CONFIG` object at the top of `ha-remote-reload.js`.
+
 ## Usage
 
-### Reload all dashboards
+### Method 1: Custom event (admin users)
 
 ```yaml
+# Reload all dashboards
 action: homeassistant.fire_event
 event_type: reload_dashboard
 ```
 
-### Reload dashboards matching a path prefix
-
 ```yaml
+# Reload dashboards matching a path prefix
 action: homeassistant.fire_event
 event_type: reload_dashboard
 event_data:
@@ -59,9 +80,8 @@ event_data:
 
 This reloads any browser tab whose URL path starts with `/dev-dash` — so it matches `/dev-dash`, `/dev-dash/overview`, `/dev-dash/lights`, etc.
 
-### Reload multiple specific paths
-
 ```yaml
+# Reload multiple specific paths
 action: homeassistant.fire_event
 event_type: reload_dashboard
 event_data:
@@ -70,9 +90,8 @@ event_data:
     - "/lovelace/kitchen"
 ```
 
-### Custom delay
-
 ```yaml
+# Custom delay (default is 500ms, set delay: 0 for immediate)
 action: homeassistant.fire_event
 event_type: reload_dashboard
 event_data:
@@ -80,34 +99,12 @@ event_data:
   delay: 3000
 ```
 
-Default delay is 500ms. Set `delay: 0` for immediate reload.
+### Method 2: State trigger (all users)
 
-### State-based trigger (non-admin users)
-
-HA restricts custom event subscriptions to admin users. If your kiosk displays run under a non-admin account, use an `input_text` helper as the trigger instead.
-
-**1. Create an `input_text` helper:**
-
-Go to **Settings → Devices & Services → Helpers → Create Helper → Text** and name it `reload_dashboard` (entity ID: `input_text.reload_dashboard`).
-
-**2. Configure the script:**
-
-Edit `ha-remote-reload.js` and set `stateEntityId` in the `CONFIG` object:
-
-```js
-const CONFIG = {
-  defaultDelay: 500,
-  debounceMs: 5000,
-  debug: false,
-  stateEntityId: "input_text.reload_dashboard",   // ← enable state trigger
-};
-```
-
-**3. Trigger a reload:**
-
-Set the entity value to `/` to reload all dashboards, or a path prefix to reload matching tabs only. The script triggers when the value changes from empty to non-empty, so clear it afterwards:
+Set the `input_text.reload_dashboard` value to `/` to reload all dashboards, or a path prefix to reload matching tabs only. The script triggers when the value changes from empty to non-empty, so clear it afterwards:
 
 ```yaml
+# Reload all dashboards
 action:
   - action: input_text.set_value
     target:
@@ -122,9 +119,8 @@ action:
       value: ""
 ```
 
-Reload only dashboards under `/lovelace`:
-
 ```yaml
+# Reload only dashboards under /lovelace
 action:
   - action: input_text.set_value
     target:
@@ -139,16 +135,46 @@ action:
       value: ""
 ```
 
-> **Note:** The state trigger uses the default 500ms delay and the same path matching as custom events. Both triggers can be active simultaneously — admin users get both, non-admin users get only the state trigger.
+## Helper scripts
 
-**4. Helper script (optional):**
+Reusable HA scripts that wrap both methods. Add to `scripts.yaml` (or via **Settings → Automations & Scenes → Scripts**).
 
-Create a reusable HA script that sets the path and resets the entity automatically. Add this to your `scripts.yaml` (or via **Settings → Automations & Scenes → Scripts**):
+### Custom event script (admin users)
+
+```yaml
+reload_dashboard_event:
+  alias: Reload Dashboard (Event)
+  description: Reload browser dashboards via custom event. Requires admin user sessions.
+  fields:
+    path:
+      description: Path prefix to reload (e.g. "/lovelace"). Omit to reload all dashboards.
+      example: "/lovelace"
+      selector:
+        text:
+    delay:
+      description: Milliseconds to wait before reloading.
+      default: 500
+      example: "1000"
+      selector:
+        number:
+          min: 0
+          max: 10000
+          unit_of_measurement: ms
+  sequence:
+    - action: homeassistant.fire_event
+      event_type: reload_dashboard
+      event_data:
+        path: "{{ path | default(omit) }}"
+        delay: "{{ delay | default(omit) }}"
+  mode: single
+```
+
+### State trigger script (all users)
 
 ```yaml
 reload_dashboard:
   alias: Reload Dashboard
-  description: Reload browser dashboards via the state-based trigger.
+  description: Reload browser dashboards via input_text state trigger. Works for all users.
   fields:
     path:
       description: Path prefix to reload (e.g. "/lovelace"). Defaults to "/" (all dashboards).
@@ -171,16 +197,25 @@ reload_dashboard:
   mode: single
 ```
 
-Call the script from automations, buttons, or Developer Tools:
+### Calling the scripts
 
 ```yaml
-# Reload all dashboards
+# Reload all dashboards (state trigger — works for any user)
 action: script.reload_dashboard
 
-# Reload a specific path
+# Reload a specific path (state trigger)
 action: script.reload_dashboard
 data:
   path: "/lovelace"
+
+# Reload all dashboards (custom event — admin only)
+action: script.reload_dashboard_event
+
+# Reload with custom path and delay (custom event — admin only)
+action: script.reload_dashboard_event
+data:
+  path: "/dev-dash"
+  delay: 3000
 ```
 
 ## Dashboard button example
@@ -254,7 +289,7 @@ const CONFIG = {
   defaultDelay: 500,
   debounceMs: 5000,
   debug: true,   // ← enable logging
-  stateEntityId: "input_text.reload_dashboard",
+  stateEntityId: "input_text.reload_dashboard",   // ← enabled by default
 };
 ```
 
