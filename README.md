@@ -6,6 +6,8 @@ Remotely reload Home Assistant dashboards by firing a custom event. Useful for w
 
 This is a lightweight JavaScript resource that subscribes to a custom `reload_dashboard` event on Home Assistant's WebSocket connection. When the event is fired (from an automation, script, button, or Developer Tools), every browser tab running the script checks if its current path matches the optional filter — and reloads if it does.
 
+The script continuously monitors the connection and automatically resubscribes after HA restarts or network interruptions — ideal for wall-mounted kiosk displays running 24/7.
+
 No DOM scraping, no shadow DOM traversal, no dependency on specific HA frontend component versions.
 
 ## Installation
@@ -155,11 +157,18 @@ const CONFIG = {
 You'll see logs like:
 
 ```
-[ha-remote-reload] Initializing (v1.0.0) — listening for reload_dashboard events...
+[ha-remote-reload] Initializing (v1.1.0) — listening for reload_dashboard events...
 [ha-remote-reload] Current path: /lovelace/0
 [ha-remote-reload] Ready. Waiting for events.
 [ha-remote-reload] Received event: { pathFilter: "/dev-dash", delay: 500, currentPath: "/dev-dash/overview" }
 [ha-remote-reload] Path matches — will reload.
+```
+
+After an HA restart or network drop, you'll see:
+
+```
+[ha-remote-reload] Connection changed — resubscribing.
+[ha-remote-reload] Resubscribed to reload_dashboard events.
 ```
 
 ## Event reference

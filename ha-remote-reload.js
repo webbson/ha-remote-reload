@@ -8,7 +8,7 @@
  * See README.md for installation and usage instructions.
  *
  * @license MIT
- * @version 1.0.0
+ * @version 1.1.0
  */
 
 (function () {
@@ -26,6 +26,8 @@
   };
 
   let lastReload = 0;
+  let activeConn = null;
+  let activeUnsub = null;
 
   function log(...args) {
     if (CONFIG.debug) {
@@ -123,35 +125,84 @@
 
   function subscribe(conn) {
     log("Subscribing to", EVENT_TYPE, "events via WebSocket.");
-    conn.subscribeEvents(function (event) {
+    activeUnsub = conn.subscribeEvents(function (event) {
       handleEvent(event);
     }, EVENT_TYPE);
+    activeConn = conn;
+  }
+
+  function resubscribe(newConn) {
+    if (activeUnsub) {
+      try { activeUnsub(); } catch (_) { /* old connection may be dead */ }
+      activeUnsub = null;
+    }
+    activeConn = null;
+    subscribe(newConn);
+    log("Resubscribed to", EVENT_TYPE, "events.");
   }
 
   function init() {
-    log("Initializing (v1.0.0) — listening for", EVENT_TYPE, "events...");
+    log("Initializing (v1.1.0) — listening for", EVENT_TYPE, "events...");
     log("Current path:", getCurrentPath());
 
-    let attempts = 0;
-    const maxAttempts = 100;
+    var FAST_MS = 500;
+    var SLOW_MS = 5000;
+    var HEALTH_MS = 10000;
+    var SLOW_AFTER_MS = 30000;
 
-    const interval = setInterval(function () {
-      attempts++;
-      const conn = getHassConnection();
+    var elapsed = 0;
+    var pollMs = FAST_MS;
+    var lastWarnAt = 0;
+    var handle;
 
-      if (conn) {
-        clearInterval(interval);
-        subscribe(conn);
-        log("Ready. Waiting for events.");
-      } else if (attempts >= maxAttempts) {
-        clearInterval(interval);
-        log(
-          "ERROR: Could not get HA WebSocket connection after",
-          maxAttempts,
-          "attempts."
-        );
+    function tick() {
+      var conn = getHassConnection();
+
+      if (!activeConn) {
+        // Phase 1: waiting for initial connection (or reconnecting after loss)
+        if (conn) {
+          subscribe(conn);
+          log("Ready. Waiting for events.");
+          clearInterval(handle);
+          handle = setInterval(tick, HEALTH_MS);
+          return;
+        }
+
+        elapsed += pollMs;
+        if (elapsed >= SLOW_AFTER_MS && pollMs !== SLOW_MS) {
+          clearInterval(handle);
+          pollMs = SLOW_MS;
+          handle = setInterval(tick, pollMs);
+          log("Still waiting for HA connection (slowing poll to 5s)...");
+        }
+        var now = Date.now();
+        if (now - lastWarnAt >= 60000) {
+          lastWarnAt = now;
+          log("WARNING: HA connection not available yet, still trying...");
+        }
+      } else {
+        // Phase 2: connected — health-check for connection replacement
+        if (conn !== activeConn) {
+          if (conn) {
+            log("Connection changed — resubscribing.");
+            resubscribe(conn);
+          } else {
+            log("Connection lost — waiting for reconnect.");
+            if (activeUnsub) {
+              try { activeUnsub(); } catch (_) { /* ignore */ }
+              activeUnsub = null;
+            }
+            activeConn = null;
+            clearInterval(handle);
+            pollMs = FAST_MS;
+            elapsed = 0;
+            handle = setInterval(tick, pollMs);
+          }
+        }
       }
-    }, 200);
+    }
+
+    handle = setInterval(tick, pollMs);
   }
 
   init();

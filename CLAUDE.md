@@ -20,7 +20,11 @@ There is no build system, package manager, or test framework. The project is a s
 2. **Utilities** (lines 30-63) — `log()`, `getCurrentPath()`, `pathMatches()`
 3. **Reload scheduler** (lines 68-81) — `scheduleReload()` with debounce tracking via `lastReload` timestamp
 4. **Event handler** (lines 86-109) — `handleEvent()` extracts `path` and `delay` from event data
-5. **WebSocket integration** (lines 113-155) — `getHassConnection()` retrieves the HA connection from the DOM, `subscribe()` hooks into `reload_dashboard` events, `init()` polls up to 100 attempts (200ms apart) for the HA connection
+5. **WebSocket integration** — `getHassConnection()` retrieves the HA connection from the DOM, `subscribe()` hooks into `reload_dashboard` events and stores the unsub handle in `activeUnsub`, `resubscribe()` cleans up the old subscription and subscribes to a new connection, `init()` runs a two-phase health-check loop:
+   - **Phase 1 (connecting):** Fast polls at 500ms, slows to 5s after 30s, never gives up
+   - **Phase 2 (connected):** Health-checks every 10s via reference comparison (`getHassConnection() !== activeConn`), resubscribes if the connection object changed, drops back to Phase 1 if lost
+
+State: `activeConn` tracks the current connection reference, `activeUnsub` holds the unsubscribe function returned by `subscribeEvents()`.
 
 Data flow: HA backend fires event → WebSocket delivers to browser → `handleEvent()` checks path filter → `scheduleReload()` debounces and calls `location.reload()`.
 
