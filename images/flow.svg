@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 320" font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace" font-size="13">
+  <style>
+    @media (prefers-color-scheme: dark) {
+      .bg { fill: #0d1117; }
+      .box { fill: #161b22; stroke: #30363d; }
+      .box-match { fill: #0d1117; stroke: #238636; }
+      .box-skip { fill: #0d1117; stroke: #30363d; stroke-dasharray: 6 3; }
+      .label { fill: #e6edf3; }
+      .sublabel { fill: #8b949e; }
+      .arrow { stroke: #8b949e; fill: #8b949e; }
+      .arrow-match { stroke: #238636; fill: #238636; }
+    }
+    @media (prefers-color-scheme: light) {
+      .bg { fill: transparent; }
+      .box { fill: #f6f8fa; stroke: #d0d7de; }
+      .box-match { fill: #ffffff; stroke: #1a7f37; }
+      .box-skip { fill: #ffffff; stroke: #d0d7de; stroke-dasharray: 6 3; }
+      .label { fill: #1f2328; }
+      .sublabel { fill: #656d76; }
+      .arrow { stroke: #656d76; fill: #656d76; }
+      .arrow-match { stroke: #1a7f37; fill: #1a7f37; }
+    }
+    .bg { }
+    .box { fill: #f6f8fa; stroke: #d0d7de; stroke-width: 1.5; rx: 6; }
+    .box-match { fill: #ffffff; stroke: #1a7f37; stroke-width: 1.5; rx: 6; }
+    .box-skip { fill: #ffffff; stroke: #d0d7de; stroke-width: 1.5; rx: 6; stroke-dasharray: 6 3; }
+    .label { fill: #1f2328; font-weight: 600; }
+    .sublabel { fill: #656d76; font-size: 11px; }
+    .arrow { stroke: #656d76; stroke-width: 1.5; fill: none; marker-end: url(#arrowhead); }
+    .arrow-match { stroke: #1a7f37; stroke-width: 1.5; fill: none; marker-end: url(#arrowhead-match); }
+  </style>
+
+  <defs>
+    <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" class="arrow" />
+    </marker>
+    <marker id="arrowhead-match" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" class="arrow-match" />
+    </marker>
+  </defs>
+
+  <rect class="bg" width="820" height="320" />
+
+  <!-- Trigger: Custom Event -->
+  <rect class="box" x="20" y="40" width="200" height="80" />
+  <text class="label" x="120" y="72" text-anchor="middle">Custom Event</text>
+  <text class="sublabel" x="120" y="90" text-anchor="middle">reload_dashboard</text>
+  <text class="sublabel" x="120" y="106" text-anchor="middle">admin users</text>
+
+  <!-- Trigger: State Trigger -->
+  <rect class="box" x="20" y="190" width="200" height="80" />
+  <text class="label" x="120" y="222" text-anchor="middle">State Trigger</text>
+  <text class="sublabel" x="120" y="240" text-anchor="middle">input_text entity</text>
+  <text class="sublabel" x="120" y="256" text-anchor="middle">all users</text>
+
+  <!-- WebSocket -->
+  <rect class="box" x="310" y="110" width="180" height="90" />
+  <text class="label" x="400" y="148" text-anchor="middle">WebSocket</text>
+  <text class="sublabel" x="400" y="168" text-anchor="middle">path match + debounce</text>
+
+  <!-- Browser Tab 1 (match) -->
+  <rect class="box-match" x="580" y="40" width="220" height="80" />
+  <text class="label" x="690" y="68" text-anchor="middle">/lovelace/overview</text>
+  <text class="sublabel" x="690" y="88" text-anchor="middle" style="fill: #1a7f37;">&#x2713; path matches &#x2192; reload()</text>
+
+  <!-- Browser Tab 2 (skip) -->
+  <rect class="box-skip" x="580" y="190" width="220" height="80" />
+  <text class="label" x="690" y="218" text-anchor="middle">/energy</text>
+  <text class="sublabel" x="690" y="238" text-anchor="middle">&#x2717; no match &#x2192; skip</text>
+
+  <!-- Arrows: triggers to websocket -->
+  <line class="arrow" x1="220" y1="80" x2="308" y2="140" />
+  <line class="arrow" x1="220" y1="230" x2="308" y2="170" />
+
+  <!-- Arrows: websocket to tabs -->
+  <line class="arrow-match" x1="490" y1="140" x2="578" y2="85" />
+  <line class="arrow" x1="490" y1="170" x2="578" y2="225" />
+</svg>

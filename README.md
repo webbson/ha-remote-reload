@@ -4,6 +4,8 @@ Remotely reload Home Assistant dashboards by firing a custom event. Useful for w
 
 ## How it works
 
+![ha-remote-reload flow diagram](images/flow.svg)
+
 This is a lightweight JavaScript resource that listens for reload triggers on Home Assistant's WebSocket connection. It supports two methods out of the box:
 
 - **Custom event** (`reload_dashboard`) — full-featured with path filtering, delay, and multi-path support. Requires admin user sessions.
